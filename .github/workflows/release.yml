@@ -44,7 +44,7 @@ jobs:
       - name: Publish web
         id: build-web
         if: matrix.service == 'web'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: infra/docker/web.Dockerfile
@@ -57,7 +57,7 @@ jobs:
       - name: Publish Python service
         id: build-python
         if: matrix.service != 'web'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: infra/docker/python.Dockerfile
