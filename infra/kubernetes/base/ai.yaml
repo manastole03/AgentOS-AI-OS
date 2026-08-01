@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai
+  labels: &labels
+    app.kubernetes.io/name: ai
+    app.kubernetes.io/part-of: healthos
+spec:
+  replicas: 2
+  selector:
+    matchLabels: *labels
+  template:
+    metadata:
+      labels: *labels
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: ai
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: ai
+          image: healthos/ai:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: http, containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: healthos-config }
+            - secretRef: { name: healthos-secrets }
+          readinessProbe:
+            httpGet: { path: /ai/v1/health/ready, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /ai/v1/health/live, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "2", memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai
+  labels:
+    app.kubernetes.io/name: ai
+    app.kubernetes.io/part-of: healthos
+spec:
+  selector:
+    app.kubernetes.io/name: ai
+    app.kubernetes.io/part-of: healthos
+  ports: [{ name: http, port: 8000, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-worker
+  labels: &worker-labels
+    app.kubernetes.io/name: ai-worker
+    app.kubernetes.io/part-of: healthos
+spec:
+  replicas: 2
+  selector: { matchLabels: *worker-labels }
+  template:
+    metadata: { labels: *worker-labels }
+    spec:
+      serviceAccountName: ai
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: worker
+          image: healthos/ai:0.1.0
+          command: ["python", "-m", "healthos_ai.worker"]
+          envFrom:
+            - configMapRef: { name: healthos-config }
+            - secretRef: { name: healthos-secrets }
+          resources:
+            requests: { cpu: 500m, memory: 768Mi }
+            limits: { cpu: "4", memory: 4Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            readOnlyRootFilesystem: true
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ai-migrations
+  labels:
+    {
+      app.kubernetes.io/name: ai-migrations,
+      app.kubernetes.io/part-of: healthos,
+    }
+spec:
+  backoffLimit: 4
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      {
+        labels:
+          {
+            app.kubernetes.io/name: ai-migrations,
+            app.kubernetes.io/part-of: healthos,
+          },
+      }
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: ai
+      securityContext:
+        { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: migrate
+          image: healthos/ai:0.1.0
+          workingDir: /app/services/ai
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef: { name: healthos-config }
+            - secretRef: { name: healthos-secrets }
+          securityContext:
+            { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }

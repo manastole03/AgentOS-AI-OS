@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app.kubernetes.io/name: api } }
+      containers:
+        - name: api
+          envFrom:
+            - configMapRef: { name: healthos-config }
+            - secretRef: { name: healthos-runtime }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai
+spec:
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app.kubernetes.io/name: ai } }
+      containers:
+        - name: ai
+          envFrom:
+            - configMapRef: { name: healthos-config }
+            - secretRef: { name: healthos-runtime }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-worker
+spec:
+  template:
+    spec:
+      containers:
+        - name: worker
+          envFrom:
+            - configMapRef: { name: healthos-config }
+            - secretRef: { name: healthos-runtime }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+spec:
+  template:
+    spec:
+      containers:
+        - name: litellm
+          envFrom:
+            - configMapRef: { name: healthos-config }
+            - secretRef: { name: healthos-runtime }
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  { name: healthos-runtime, key: LITELLM_DATABASE_URL }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ai-migrations
+spec:
+  template:
+    spec:
+      containers:
+        - name: migrate
+          envFrom:
+            - configMapRef: { name: healthos-config }
+            - secretRef: { name: healthos-runtime }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: healthos-config
+data:
+  JWT_ALGORITHM: RS256
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://healthos-otel-collector.monitoring.svc:4317
+  OTEL_TRACE_SAMPLE_RATIO: "0.1"
+  CORS_ORIGINS: '["https://healthos.example.com"]'
+  ALLOWED_HOSTS: '["healthos.example.com","api","gateway"]'

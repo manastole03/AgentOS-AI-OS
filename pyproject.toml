@@ -1,0 +1,66 @@
+[project]
+name = "healthos-workspace"
+version = "0.1.0"
+requires-python = ">=3.12,<3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28.1,<1",
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.25,<1",
+  "pytest-cov>=6,<7",
+  "ruff>=0.11,<1",
+]
+
+[tool.uv.workspace]
+members = [
+  "packages/python/healthos_platform",
+  "services/api",
+  "services/ai",
+  "services/gateway",
+]
+
+[tool.uv.sources]
+healthos-platform = { workspace = true }
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["services/*/src", "packages/python/*/src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "S"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+packages = ["healthos_platform", "healthos_api", "healthos_ai", "healthos_gateway"]
+mypy_path = [
+  "packages/python/healthos_platform/src",
+  "services/api/src",
+  "services/ai/src",
+  "services/gateway/src",
+]
+
+[[tool.mypy.overrides]]
+module = ["authlib.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --strict-config --import-mode=importlib"
+asyncio_mode = "auto"
+testpaths = ["packages/python/healthos_platform/tests", "services/*/tests"]
+markers = ["integration: requires PostgreSQL and Redis"]
+pythonpath = [
+  "packages/python/healthos_platform/src",
+  "services/api/src",
+  "services/ai/src",
+  "services/gateway/src",
+]

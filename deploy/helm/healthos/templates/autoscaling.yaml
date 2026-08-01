@@ -1,0 +1,27 @@
+{{- range $name, $workload := .Values.workloads }}
+{{- if $workload.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: {{ include "healthos.fullname" $ }}-{{ $name }} }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ include "healthos.fullname" $ }}-{{ $name }} }
+  minReplicas: {{ $workload.autoscaling.minReplicas }}
+  maxReplicas: {{ $workload.autoscaling.maxReplicas }}
+  behavior:
+    scaleUp: { stabilizationWindowSeconds: 30, policies: [{ type: Percent, value: 100, periodSeconds: 60 }] }
+    scaleDown: { stabilizationWindowSeconds: 300, policies: [{ type: Percent, value: 25, periodSeconds: 60 }] }
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: {{ $workload.autoscaling.cpu }} } }
+---
+{{- end }}
+{{- if $.Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: {{ include "healthos.fullname" $ }}-{{ $name }} }
+spec:
+  minAvailable: {{ $.Values.podDisruptionBudget.minAvailable }}
+  selector: { matchLabels: { app.kubernetes.io/name: {{ $name }}, app.kubernetes.io/instance: {{ $.Release.Name }} } }
+---
+{{- end }}
+{{- end }}

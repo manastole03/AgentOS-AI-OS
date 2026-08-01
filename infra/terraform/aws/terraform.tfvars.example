@@ -1,0 +1,19 @@
+aws_region                 = "us-east-1"
+environment                = "production"
+name                       = "healthos"
+github_repository          = "your-org/healthos"
+cluster_public_access_cidrs = ["203.0.113.10/32"]
+
+# Prefer injecting sensitive values through a protected CI workspace variable set.
+google_client_id      = "replace-me.apps.googleusercontent.com"
+google_client_secret  = "replace-me"
+smtp_username         = "replace-me"
+smtp_password         = "replace-me"
+openai_api_key        = "replace-me"
+anthropic_api_key     = "replace-me"
+gemini_api_key        = "replace-me"
+ocr_api_key           = ""
+fhir_access_token     = ""
+insurance_api_key     = ""
+stripe_secret_key     = ""
+stripe_webhook_secret = ""

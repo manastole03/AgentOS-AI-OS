@@ -1,0 +1,19 @@
+{{- range $name, $workload := .Values.workloads }}
+{{- if $workload.port }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "healthos.fullname" $ }}-{{ $name }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/part-of: healthos
+    {{- if ne $name "web" }}
+    healthos.io/metrics: "true"
+    {{- end }}
+spec:
+  selector: { app.kubernetes.io/name: {{ $name }}, app.kubernetes.io/instance: {{ $.Release.Name }} }
+  ports: [{ name: http, port: {{ $workload.port }}, targetPort: http }]
+---
+{{- end }}
+{{- end }}

@@ -1,0 +1,31 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "healthos.fullname" . }}-slos
+  labels: { release: kube-prometheus-stack }
+spec:
+  groups:
+    - name: healthos-slos
+      rules:
+        - alert: HealthOSHighErrorRate
+          expr: sum(rate(healthos_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(healthos_http_requests_total[5m])), 0.001) > 0.02
+          for: 10m
+          labels: { severity: critical }
+          annotations: { summary: "HealthOS 5xx error budget burn" }
+        - alert: HealthOSHighLatency
+          expr: histogram_quantile(0.95, sum by (le, service) (rate(healthos_http_request_duration_seconds_bucket[5m]))) > 1
+          for: 15m
+          labels: { severity: warning }
+          annotations: { summary: "HealthOS p95 latency above one second" }
+        - alert: HealthOSServiceDown
+          expr: up{service=~"healthos-(gateway|api|ai|litellm)"} == 0
+          for: 5m
+          labels: { severity: critical }
+          annotations: { summary: "HealthOS service target is unavailable" }
+        - alert: HealthOSAgentFailures
+          expr: increase(healthos_ai_runs_total{status="failed"}[15m]) > 5
+          for: 5m
+          labels: { severity: warning }
+          annotations: { summary: "AI run failures exceed threshold" }
+{{- end }}

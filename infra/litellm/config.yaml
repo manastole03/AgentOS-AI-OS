@@ -1,0 +1,39 @@
+model_list:
+  - model_name: healthos-openai
+    litellm_params:
+      model: os.environ/OPENAI_MODEL
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: healthos-anthropic
+    litellm_params:
+      model: os.environ/ANTHROPIC_MODEL
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: healthos-gemini
+    litellm_params:
+      model: os.environ/GEMINI_MODEL
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: healthos-embedding
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
+router_settings:
+  routing_strategy: latency-based-routing
+  num_retries: 2
+  timeout: 120
+  fallbacks:
+    - healthos-openai: [healthos-anthropic, healthos-gemini]
+    - healthos-anthropic: [healthos-openai, healthos-gemini]
+    - healthos-gemini: [healthos-openai, healthos-anthropic]
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: redis
+    host: os.environ/REDIS_HOST
+    port: os.environ/REDIS_PORT
+  drop_params: true
+  redact_user_api_key_info: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  disable_spend_logs: false

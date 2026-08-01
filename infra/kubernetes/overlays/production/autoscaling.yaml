@@ -1,0 +1,54 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: api }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: api }
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: ai }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: ai }
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: ai-worker }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: ai-worker }
+  minReplicas: 2
+  maxReplicas: 50
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 300 }
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 65 }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: api }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: api } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: ai }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: ai } }

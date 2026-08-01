@@ -1,0 +1,126 @@
+global:
+  imageRegistry: ghcr.io/your-org
+  imageTag: latest
+  imagePullPolicy: IfNotPresent
+  domain: healthos.example.com
+  environment: production
+  otelEndpoint: http://healthos-otel-collector.monitoring.svc:4317
+
+config:
+  LOG_LEVEL: INFO
+  LOG_FORMAT: json
+  API_SERVICE_URL: http://healthos-api:8000
+  AI_SERVICE_URL: http://healthos-ai:8000
+  LITELLM_BASE_URL: http://healthos-litellm:4000/v1
+  OTEL_TRACE_SAMPLE_RATIO: "0.1"
+  CORS_ORIGINS: '["https://healthos.example.com"]'
+  ALLOWED_HOSTS: '["healthos.example.com","healthos-gateway","healthos-api"]'
+  AUTH_COOKIE_SECURE: "true"
+  JWT_ALGORITHM: RS256
+  JWT_ISSUER: healthos
+  JWT_AUDIENCE: healthos-api
+
+externalSecrets:
+  enabled: true
+  refreshInterval: 1h
+  secretStoreRef: healthos-aws-secrets
+  remoteKey: healthos/production/runtime
+
+workloads:
+  gateway:
+    image: healthos-gateway
+    replicas: 3
+    port: 8000
+    livePath: /health/live
+    readyPath: /health/ready
+    resources:
+      {
+        requests: { cpu: 200m, memory: 256Mi },
+        limits: { cpu: "2", memory: 1Gi },
+      }
+    autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 20, cpu: 65 }
+  api:
+    image: healthos-api
+    replicas: 3
+    port: 8000
+    livePath: /api/v1/health/live
+    readyPath: /api/v1/health/ready
+    resources:
+      {
+        requests: { cpu: 300m, memory: 512Mi },
+        limits: { cpu: "2", memory: 2Gi },
+      }
+    autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 30, cpu: 65 }
+  ai:
+    image: healthos-ai
+    replicas: 3
+    port: 8000
+    livePath: /ai/v1/health/live
+    readyPath: /ai/v1/health/ready
+    resources:
+      {
+        requests: { cpu: 500m, memory: 1Gi },
+        limits: { cpu: "4", memory: 4Gi },
+      }
+    autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 30, cpu: 65 }
+  ai-worker:
+    image: healthos-ai
+    replicas: 3
+    command: ["python", "-m", "healthos_ai.worker"]
+    resources:
+      {
+        requests: { cpu: 500m, memory: 1Gi },
+        limits: { cpu: "4", memory: 4Gi },
+      }
+    autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 50, cpu: 60 }
+  web:
+    image: healthos-web
+    replicas: 3
+    port: 3000
+    livePath: /healthz
+    readyPath: /healthz
+    resources:
+      {
+        requests: { cpu: 200m, memory: 256Mi },
+        limits: { cpu: "1", memory: 1Gi },
+      }
+    autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 20, cpu: 65 }
+  litellm:
+    image: ghcr.io/berriai/litellm
+    tag: main-stable
+    replicas: 3
+    port: 4000
+    livePath: /health/liveliness
+    readyPath: /health/readiness
+    args:
+      ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
+    resources:
+      {
+        requests: { cpu: 500m, memory: 1Gi },
+        limits: { cpu: "4", memory: 4Gi },
+      }
+    autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 20, cpu: 60 }
+
+ingress:
+  enabled: true
+  className: nginx
+  tlsSecret: healthos-tls
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 11m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-connections: "100"
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+
+podDisruptionBudget: { enabled: true, minAvailable: 2 }
+networkPolicy:
+  {
+    enabled: true,
+    ingressNamespace: ingress-nginx,
+    monitoringNamespace: monitoring,
+    dataPlaneCidr: 10.42.0.0/16,
+  }

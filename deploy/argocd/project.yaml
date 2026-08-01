@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: healthos
+  namespace: argocd
+spec:
+  description: HealthOS production workloads
+  sourceRepos: ["https://github.com/your-org/healthos.git"]
+  destinations:
+    - { namespace: healthos, server: https://kubernetes.default.svc }
+    - { namespace: monitoring, server: https://kubernetes.default.svc }
+    - { namespace: external-secrets, server: https://kubernetes.default.svc }
+  clusterResourceWhitelist:
+    - { group: "*", kind: "*" }
+  namespaceResourceWhitelist:
+    - { group: "*", kind: "*" }
+  roles:
+    - name: deployer
+      policies:
+        ["p, proj:healthos:deployer, applications, sync, healthos/*, allow"]
+      groups: [healthos-deployers]

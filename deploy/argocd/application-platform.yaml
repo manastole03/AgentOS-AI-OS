@@ -1,0 +1,117 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: { name: healthos-monitoring, namespace: argocd }
+spec:
+  project: healthos
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 72.6.2
+    helm:
+      releaseName: kube-prometheus-stack
+      values: |
+        prometheus:
+          prometheusSpec:
+            retention: 30d
+            retentionSize: 100GB
+            storageSpec:
+              volumeClaimTemplate:
+                spec: { accessModes: [ReadWriteOnce], resources: { requests: { storage: 120Gi } } }
+        grafana:
+          admin:
+            existingSecret: grafana-admin
+          persistence: { enabled: true, size: 20Gi }
+          grafana.ini:
+            security: { cookie_secure: true, strict_transport_security: true }
+            analytics: { reporting_enabled: false, check_for_updates: false }
+          additionalDataSources:
+            - { name: Tempo, type: tempo, url: http://tempo.monitoring.svc:3100, access: proxy }
+  destination: { server: https://kubernetes.default.svc, namespace: monitoring }
+  syncPolicy:
+    {
+      automated: { prune: true, selfHeal: true },
+      syncOptions: [CreateNamespace=true, ServerSideApply=true],
+    }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: { name: healthos-otel, namespace: argocd }
+spec:
+  project: healthos
+  source:
+    repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+    chart: opentelemetry-collector
+    targetRevision: 0.127.2
+    helm:
+      releaseName: healthos-otel
+      values: |
+        fullnameOverride: healthos-otel-collector
+        mode: deployment
+        replicaCount: 3
+        image: { repository: otel/opentelemetry-collector-contrib }
+        presets: { kubernetesAttributes: { enabled: true }, kubeletMetrics: { enabled: true } }
+        config:
+          processors:
+            memory_limiter: { check_interval: 1s, limit_mib: 400 }
+            batch: {}
+          exporters:
+            otlphttp/tempo: { endpoint: http://tempo.monitoring.svc:4318 }
+          service:
+            pipelines:
+              traces: { receivers: [otlp], processors: [memory_limiter, k8sattributes, batch], exporters: [otlphttp/tempo] }
+        resources: { requests: { cpu: 200m, memory: 512Mi }, limits: { cpu: "1", memory: 1Gi } }
+  destination: { server: https://kubernetes.default.svc, namespace: monitoring }
+  syncPolicy:
+    {
+      automated: { prune: true, selfHeal: true },
+      syncOptions: [CreateNamespace=true],
+    }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: { name: healthos-tempo, namespace: argocd }
+spec:
+  project: healthos
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: tempo
+    targetRevision: 1.23.3
+    helm:
+      releaseName: tempo
+      values: |
+        tempo:
+          retention: 168h
+          receivers:
+            otlp: { protocols: { grpc: {}, http: {} } }
+        persistence: { enabled: true, size: 100Gi }
+        serviceMonitor: { enabled: true }
+  destination: { server: https://kubernetes.default.svc, namespace: monitoring }
+  syncPolicy:
+    {
+      automated: { prune: true, selfHeal: true },
+      syncOptions: [CreateNamespace=true],
+    }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: { name: external-secrets, namespace: argocd }
+spec:
+  project: healthos
+  source:
+    repoURL: https://charts.external-secrets.io
+    chart: external-secrets
+    targetRevision: 0.18.2
+    helm:
+      releaseName: external-secrets
+      values: |
+        installCRDs: true
+        serviceAccount:
+          annotations:
+            eks.amazonaws.com/role-arn: replace-with-terraform-output
+  destination:
+    { server: https://kubernetes.default.svc, namespace: external-secrets }
+  syncPolicy:
+    {
+      automated: { prune: true, selfHeal: true },
+      syncOptions: [CreateNamespace=true, ServerSideApply=true],
+    }

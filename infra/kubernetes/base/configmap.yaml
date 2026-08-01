@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: healthos-config
+data:
+  ENVIRONMENT: production
+  LOG_LEVEL: INFO
+  LOG_FORMAT: json
+  CORS_ORIGINS: '["https://healthos.example.com"]'
+  ALLOWED_HOSTS: '["healthos.example.com","api","localhost"]'
+  API_SERVICE_URL: http://api:8000
+  AI_SERVICE_URL: http://ai:8000
+  LITELLM_BASE_URL: http://litellm:4000/v1
+  OPENAI_MODEL: openai/gpt-5.4
+  ANTHROPIC_MODEL: anthropic/claude-opus-5
+  GEMINI_MODEL: gemini/gemini-2.5-pro
+  JWT_ALGORITHM: HS256
+  JWT_ISSUER: healthos
+  JWT_AUDIENCE: healthos-api
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "15"
+  JWT_REFRESH_TOKEN_EXPIRE_DAYS: "30"
+  AUTH_COOKIE_SECURE: "true"
+  GOOGLE_REDIRECT_URI: https://healthos.example.com/api/v1/auth/google/callback
+  FRONTEND_AUTH_CALLBACK_URL: https://healthos.example.com/auth/callback
+  SMTP_HOST: smtp.example.com
+  SMTP_PORT: "587"
+  SMTP_FROM_EMAIL: no-reply@healthos.example.com
+  SMTP_USE_TLS: "true"
+  SMS_WEBHOOK_URL: https://sms.example.com/v1/otp
+  OCR_API_URL: ""
+  FHIR_BASE_URL: ""
+  INSURANCE_API_URL: ""
+  NOTIFICATION_WEBHOOK_URL: ""
+  DOCUMENT_MAX_BYTES: "10485760"
+  LANGSMITH_TRACING: "false"
+  LANGSMITH_PROJECT: healthos
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""

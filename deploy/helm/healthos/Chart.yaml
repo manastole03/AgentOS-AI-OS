@@ -1,0 +1,7 @@
+apiVersion: v2
+name: healthos
+description: Cloud-native Healthcare and Insurance AI Operating System
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.30.0-0"

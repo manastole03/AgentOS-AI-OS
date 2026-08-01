@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnpm-store/
+.turbo/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# build output
+.next/
+dist/
+build/
+coverage/
+htmlcov/
+*.tsbuildinfo
+
+# local configuration and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+
+# generated deployment files
+infra/kubernetes/overlays/*/secrets.env
+
+# Terraform local state and provider cache (lock files remain tracked)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example

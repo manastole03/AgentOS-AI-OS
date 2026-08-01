@@ -1,0 +1,338 @@
+name: healthos
+
+x-python-service: &python-service
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    ENVIRONMENT: local
+    LOG_FORMAT: console
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-healthos}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-healthos}
+    REDIS_URL: redis://redis:6379/0
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+  networks: [healthos]
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    ports: ["3000:3000"]
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [healthos]
+
+  gateway:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+      args:
+        SERVICE_PACKAGE: healthos-gateway
+        SERVICE_PATH: gateway
+        APP_MODULE: healthos_gateway.main:app
+    environment:
+      ENVIRONMENT: local
+      LOG_FORMAT: console
+      API_SERVICE_URL: http://api:8000
+      AI_SERVICE_URL: http://ai:8000
+      CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+    ports: ["8080:8000"]
+    depends_on:
+      api:
+        condition: service_healthy
+      ai:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+      args:
+        SERVICE_PACKAGE: healthos-api
+        SERVICE_PATH: api
+        APP_MODULE: healthos_api.main:app
+    working_dir: /app/services/api
+    environment:
+      ENVIRONMENT: local
+      LOG_FORMAT: console
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-healthos}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-healthos}
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: '["localhost","127.0.0.1","testserver","api"]'
+    command:
+      [
+        "sh",
+        "-c",
+        "alembic upgrade head && uvicorn healthos_api.main:app --host 0.0.0.0 --port 8000 --no-access-log",
+      ]
+    ports: ["8000:8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  ai:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+      args:
+        SERVICE_PACKAGE: healthos-ai
+        SERVICE_PATH: ai
+        APP_MODULE: healthos_ai.main:app
+    environment:
+      ENVIRONMENT: local
+      LOG_FORMAT: console
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-healthos}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-healthos}
+      REDIS_URL: redis://redis:6379/1
+      API_SERVICE_URL: http://api:8000
+      LITELLM_BASE_URL: http://litellm:4000/v1
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-local-litellm-master-key}
+      AI_DATA_ENCRYPTION_KEY: ${AI_DATA_ENCRYPTION_KEY:-aGVhbHRob3MtbG9jYWwtYWkta2V5LTMyLWJ5dGVzISE=}
+      LANGGRAPH_AES_KEY: ${LANGGRAPH_AES_KEY:-healthos-local-checkpoint-key-32}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-healthos}
+    working_dir: /app/services/ai
+    command:
+      [
+        "sh",
+        "-c",
+        "alembic upgrade head && uvicorn healthos_ai.main:app --host 0.0.0.0 --port 8000 --no-access-log",
+      ]
+    ports: ["8001:8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/ai/v1/health/ready')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  ai-worker:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+      args:
+        SERVICE_PACKAGE: healthos-ai
+        SERVICE_PATH: ai
+        APP_MODULE: healthos_ai.main:app
+    environment:
+      ENVIRONMENT: local
+      LOG_FORMAT: console
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-healthos}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-healthos}
+      REDIS_URL: redis://redis:6379/1
+      API_SERVICE_URL: http://api:8000
+      LITELLM_BASE_URL: http://litellm:4000/v1
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-local-litellm-master-key}
+      AI_DATA_ENCRYPTION_KEY: ${AI_DATA_ENCRYPTION_KEY:-aGVhbHRob3MtbG9jYWwtYWkta2V5LTMyLWJ5dGVzISE=}
+      LANGGRAPH_AES_KEY: ${LANGGRAPH_AES_KEY:-healthos-local-checkpoint-key-32}
+    command: ["python", "-m", "healthos_ai.worker"]
+    depends_on:
+      ai:
+        condition: service_healthy
+    deploy:
+      replicas: 2
+
+  job-watch-worker:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+      args:
+        SERVICE_PACKAGE: healthos-api
+        SERVICE_PATH: api
+        APP_MODULE: healthos_api.main:app
+    working_dir: /app/services/api
+    environment:
+      ENVIRONMENT: local
+      LOG_FORMAT: console
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-healthos}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-healthos}
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: '["localhost","127.0.0.1","testserver","api"]'
+      JOB_WATCH_SCAN_INTERVAL_SECONDS: ${JOB_WATCH_SCAN_INTERVAL_SECONDS:-300}
+    command: ["healthos-job-watch-scan", "--loop"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable@sha256:19a879f9c4ed466f2438aa08b22e2b472053ab57c6325db73c71d0624d2d4953
+    restart: unless-stopped
+    command:
+      ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-local-litellm-master-key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-openai/gpt-5.4}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-anthropic/claude-opus-5}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini/gemini-2.5-pro}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-healthos}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-healthos}
+    volumes:
+      - ./infra/litellm/config.yaml:/app/config.yaml:ro
+    ports: ["4000:4000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [healthos]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.128.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./infra/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports: ["4317:4317", "4318:4318", "9464:9464"]
+    networks: [healthos]
+
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    restart: unless-stopped
+    command:
+      [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.retention.time=15d",
+      ]
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports: ["9090:9090"]
+    networks: [healthos]
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-local-grafana-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_COOKIE_SECURE: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["3001:3000"]
+    depends_on: [prometheus]
+    networks: [healthos]
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-healthos}
+      POSTGRES_USER: ${POSTGRES_USER:-healthos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    ports: ["127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-vector.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-healthos} -d ${POSTGRES_DB:-healthos}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [healthos]
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory-policy",
+        "noeviction",
+      ]
+    ports: ["127.0.0.1:${REDIS_HOST_PORT:-56379}:6379"]
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [healthos]
+
+volumes:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  healthos:
+    driver: bridge

@@ -1,0 +1,11 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "healthos.fullname" . }}
+  labels: { release: kube-prometheus-stack }
+spec:
+  selector: { matchLabels: { app.kubernetes.io/part-of: healthos, healthos.io/metrics: "true" } }
+  namespaceSelector: { matchNames: [{{ .Release.Namespace }}] }
+  endpoints: [{ port: http, path: /metrics, interval: {{ .Values.serviceMonitor.interval }} }]
+{{- end }}

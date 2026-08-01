@@ -1,0 +1,13 @@
+global:
+  imageRegistry: ghcr.io/your-org
+  imageTag: replace-with-immutable-version
+  domain: healthos.example.com
+config:
+  CORS_ORIGINS: '["https://healthos.example.com"]'
+  ALLOWED_HOSTS: '["healthos.example.com","healthos-gateway","healthos-api"]'
+  SMTP_HOST: smtp.example.com
+  SMTP_FROM_EMAIL: no-reply@healthos.example.com
+  SMS_WEBHOOK_URL: https://sms.example.com/v1/otp
+externalSecrets:
+  enabled: true
+  remoteKey: healthos/production/runtime

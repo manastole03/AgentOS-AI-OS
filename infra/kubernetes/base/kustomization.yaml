@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: healthos
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - service-accounts.yaml
+  - api.yaml
+  - ai.yaml
+  - litellm.yaml
+  - gateway.yaml
+  - web.yaml
+  - network-policy.yaml
+secretGenerator:
+  - name: healthos-secrets
+    literals:
+      - DATABASE_URL=postgresql+asyncpg://healthos:replace-me@postgres:5432/healthos
+      - LITELLM_DATABASE_URL=postgresql://healthos:replace-me@postgres:5432/healthos
+      - POSTGRES_PASSWORD=replace-me
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=replace-this-through-your-secrets-controller
+      - JWT_REFRESH_SECRET_KEY=replace-this-through-your-secrets-controller
+      - OTP_SECRET_KEY=replace-this-through-your-secrets-controller
+      - GOOGLE_CLIENT_ID=
+      - GOOGLE_CLIENT_SECRET=
+      - OPENAI_API_KEY=
+      - ANTHROPIC_API_KEY=
+      - GEMINI_API_KEY=
+      - LITELLM_MASTER_KEY=replace-this-through-your-secrets-controller
+      - AI_DATA_ENCRYPTION_KEY=replace-with-a-valid-fernet-key
+      - LANGGRAPH_AES_KEY=replace-with-a-32-byte-key
+      - SMTP_PASSWORD=
+      - SMS_WEBHOOK_TOKEN=
+      - OCR_API_KEY=
+      - FHIR_ACCESS_TOKEN=
+      - INSURANCE_API_KEY=
+      - STRIPE_SECRET_KEY=
+      - STRIPE_WEBHOOK_SECRET=
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    app.kubernetes.io/part-of: healthos

@@ -1,0 +1,19 @@
+[project]
+name = "healthos-gateway"
+version = "0.1.0"
+description = "HealthOS edge API gateway"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "healthos-platform",
+  "httpx>=0.28,<1",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/healthos_gateway"]
+

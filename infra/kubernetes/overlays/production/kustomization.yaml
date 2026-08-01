@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: healthos
+resources:
+  - ../../base
+  - ingress.yaml
+  - autoscaling.yaml
+  - external-secrets.yaml
+patches:
+  - path: production-patch.yaml
+  - path: delete-placeholder-secret.yaml
+images:
+  - name: healthos/api
+    newName: ghcr.io/your-org/healthos-api
+    newTag: latest
+  - name: healthos/ai
+    newName: ghcr.io/your-org/healthos-ai
+    newTag: latest
+  - name: healthos/gateway
+    newName: ghcr.io/your-org/healthos-gateway
+    newTag: latest
+  - name: healthos/web
+    newName: ghcr.io/your-org/healthos-web
+    newTag: latest

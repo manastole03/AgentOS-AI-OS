@@ -1,0 +1,186 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.12.4 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+        env:
+          NEXT_PUBLIC_API_URL: https://healthos.example.com
+
+  python:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: healthos_test
+          POSTGRES_USER: healthos
+          POSTGRES_PASSWORD: healthos_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U healthos -d healthos_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@v6
+        with: { enable-cache: true }
+      - run: uv sync --all-packages --dev --frozen
+      - run: uv run alembic -c services/api/alembic.ini upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://healthos:healthos_test@localhost:5432/healthos_test
+      - run: uv run alembic -c services/ai/alembic.ini upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://healthos:healthos_test@localhost:5432/healthos_test
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy
+      - run: uv run pytest --cov --cov-report=term-missing
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: postgresql+asyncpg://healthos:healthos_test@localhost:5432/healthos_test
+          REDIS_URL: redis://localhost:6379/0
+          RUN_INTEGRATION_TESTS: "1"
+      - name: Export OpenAPI contracts
+        run: uv run python scripts/export_openapi.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openapi-contracts
+          path: docs/api/openapi-*.json
+
+  kubernetes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with: { version: v1.32.0 }
+      - run: kubectl kustomize infra/kubernetes/overlays/development >/tmp/development.yaml
+      - run: kubectl kustomize infra/kubernetes/overlays/production >/tmp/production.yaml
+      - uses: azure/setup-helm@v4
+        with: { version: v3.17.3 }
+      - run: helm lint deploy/helm/healthos
+      - run: helm template healthos deploy/helm/healthos --namespace healthos --set externalSecrets.enabled=false --set serviceMonitor.enabled=false >/tmp/helm.yaml
+      - name: Validate Kubernetes schemas
+        run: docker run --rm -i ghcr.io/yannh/kubeconform:v0.7.0 -strict -summary -ignore-missing-schemas < /tmp/production.yaml
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.11.4 }
+      - run: terraform -chdir=infra/terraform/aws fmt -check -recursive
+      - run: terraform -chdir=infra/terraform/aws init -backend=false
+      - run: terraform -chdir=infra/terraform/aws validate
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: trivy-results.sarif }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@v6
+      - run: python -m pip install pip-audit
+      - run: uv export --all-packages --no-dev --no-emit-workspace --no-hashes --format requirements-txt --output-file /tmp/requirements.txt
+      - run: pip-audit --no-deps -r /tmp/requirements.txt
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.12.4 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm audit --prod --audit-level high
+
+  load-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker run --rm -v "$PWD:/src" grafana/k6:0.57.0 inspect /src/tests/load/healthos.js
+
+  containers:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api, ai, gateway, web]
+        include:
+          - service: api
+            package: healthos-api
+            module: healthos_api.main:app
+          - service: ai
+            package: healthos-ai
+            module: healthos_ai.main:app
+          - service: gateway
+            package: healthos-gateway
+            module: healthos_gateway.main:app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build web image
+        if: matrix.service == 'web'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/web.Dockerfile
+          push: false
+          tags: healthos/web:ci
+      - name: Build Python image
+        if: matrix.service != 'web'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/python.Dockerfile
+          push: false
+          tags: healthos/${{ matrix.service }}:ci
+          build-args: |
+            SERVICE_PACKAGE=${{ matrix.package }}
+            SERVICE_PATH=${{ matrix.service }}
+            APP_MODULE=${{ matrix.module }}
