@@ -6,7 +6,7 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
   "fastapi>=0.115,<1",
   "opentelemetry-exporter-otlp-proto-grpc>=1.36,<2",
-  "opentelemetry-instrumentation-fastapi>=0.57b0,<1",
+  "opentelemetry-instrumentation-fastapi>=0.65b0,<1",
   "opentelemetry-instrumentation-httpx>=0.57b0,<1",
   "opentelemetry-sdk>=1.36,<2",
   "prometheus-client>=0.22,<1",
