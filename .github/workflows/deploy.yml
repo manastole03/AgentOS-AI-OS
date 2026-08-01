@@ -27,7 +27,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - run: aws eks update-kubeconfig --name "${{ vars.EKS_CLUSTER_NAME }}"
-      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-kubectl@v5
       - name: Promote immutable version through Argo CD Application
         run: |
           kubectl -n argocd patch application healthos-production --type merge -p '{"spec":{"source":{"helm":{"parameters":[{"name":"global.imageTag","value":"${{ inputs.version }}"}]}}}}'

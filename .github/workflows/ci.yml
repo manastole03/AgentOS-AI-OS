@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-kubectl@v5
         with: { version: v1.32.0 }
       - run: kubectl kustomize infra/kubernetes/overlays/development >/tmp/development.yaml
       - run: kubectl kustomize infra/kubernetes/overlays/production >/tmp/production.yaml
