@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /bin/
 
 ARG SERVICE_PACKAGE
@@ -20,7 +20,7 @@ COPY services/gateway/src services/gateway/src
 
 RUN uv sync --frozen --no-dev --no-editable --package "${SERVICE_PACKAGE}"
 
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 ARG SERVICE_PATH
 ARG APP_MODULE
