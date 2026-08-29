@@ -1,4 +1,4 @@
-FROM node:22.17.0-alpine AS base
+FROM node:26.8.1-alpine AS base
 RUN corepack enable
 WORKDIR /app
 
@@ -19,7 +19,7 @@ ARG NEXT_PUBLIC_API_URL=""
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @healthos/web build
 
-FROM node:22.17.0-alpine AS runtime
+FROM node:26.8.1-alpine AS runtime
 RUN addgroup --system --gid 10001 healthos && adduser --system --uid 10001 --ingroup healthos healthos
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
